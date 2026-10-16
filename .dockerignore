@@ -1,0 +1,7 @@
+*
+!fleet/pyproject.toml
+!fleet/alembic.ini
+!fleet/fleet
+!unit/app.py
+**/__pycache__
+**/*.pyc

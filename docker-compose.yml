@@ -1,0 +1,42 @@
+# Development stack for the fleet server. Production deployment is covered by issue #7.
+#   docker compose up -d db        database only (for tests and `fleet serve` on the host)
+#   docker compose up --build      database + server on http://localhost:8800
+name: wifi-fleet
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: fleet
+      POSTGRES_PASSWORD: fleet-dev
+      POSTGRES_DB: fleet
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - fleet-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet -d fleet"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: fleet/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://fleet:fleet-dev@db:5432/fleet
+    # Published on all interfaces so real units on the LAN can reach the development server.
+    ports:
+      - "8800:8800"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  fleet-db:

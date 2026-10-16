@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wi-Fi Monitor</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="vendor/chart.umd.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2.5 9.5a14 14 0 0 1 19 0"/><path d="M5.8 13a9.2 9.2 0 0 1 12.4 0"/>
+        <path d="M9.1 16.4a4.5 4.5 0 0 1 5.8 0"/><circle cx="12" cy="19.6" r="1.3"/>
+      </svg>
+      <div>
+        <h1>Wi-Fi Monitor</h1>
+        <p class="subtitle">Signal scanner and connection stability</p>
+      </div>
+    </div>
+    <div class="pills">
+      <span class="pill" id="device-pill"><span class="dot"></span><span class="pill-text">Connecting…</span></span>
+      <span class="pill" id="session-pill" hidden><span class="dot live"></span><span class="pill-text"></span></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card" id="control-card">
+        <h2>New session</h2>
+        <form id="session-form" autocomplete="off">
+          <div class="segmented" role="radiogroup" aria-label="Measurement mode">
+            <label><input type="radio" name="mode" value="scan" checked><span>Scan</span></label>
+            <label><input type="radio" name="mode" value="connect"><span>Connection</span></label>
+            <label><input type="radio" name="mode" value="both"><span>Both</span></label>
+          </div>
+          <p class="hint" id="mode-hint"></p>
+
+          <div class="field conn-only">
+            <label for="ssid">Network (SSID)</label>
+            <input id="ssid" name="ssid" list="ssid-options" maxlength="32" placeholder="Pick or type a network">
+            <datalist id="ssid-options"></datalist>
+          </div>
+          <div class="field conn-only">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" maxlength="64" autocomplete="new-password">
+            <p class="hint" id="password-hint">Sent to the board only. Never stored.</p>
+          </div>
+          <div class="field conn-only">
+            <label for="target">Ping target</label>
+            <input id="target" name="target" maxlength="253" placeholder="Default gateway">
+          </div>
+          <div class="field-row">
+            <div class="field scan-only">
+              <label for="scan_interval">Scan every (s)</label>
+              <input id="scan_interval" name="scan_interval" type="number" min="1" max="3600" step="1">
+            </div>
+            <div class="field conn-only">
+              <label for="link_interval">Ping every (s)</label>
+              <input id="link_interval" name="link_interval" type="number" min="0.2" max="60" step="0.1">
+            </div>
+          </div>
+          <div class="field">
+            <label for="note">Note <span class="optional">optional</span></label>
+            <input id="note" name="note" maxlength="200" placeholder="e.g. Room 204, by the window">
+          </div>
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+          <div class="actions">
+            <button type="submit" class="btn primary" id="start-btn">Start session</button>
+            <button type="button" class="btn danger" id="stop-btn" hidden>Stop</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Sessions</h2>
+          <span class="count" id="session-count"></span>
+        </div>
+        <ul class="session-list" id="session-list"></ul>
+      </section>
+    </aside>
+
+    <div class="content">
+      <section class="empty card" id="empty-state" hidden>
+        <h2>No session yet</h2>
+        <p>Choose a mode on the left and press <strong>Start session</strong>. Scan mode needs no password and shows every network the board can hear on 2.4 GHz and 5 GHz.</p>
+      </section>
+
+      <div id="session-view" hidden>
+        <section class="session-head">
+          <div>
+            <h2 id="view-title"></h2>
+            <p class="meta" id="view-meta"></p>
+          </div>
+          <div class="head-actions">
+            <details class="menu">
+              <summary class="btn">Export CSV</summary>
+              <div class="menu-items" id="export-links"></div>
+            </details>
+            <button class="btn ghost" id="delete-btn" type="button">Delete</button>
+          </div>
+        </section>
+
+        <section class="kpis" id="link-kpis" hidden></section>
+        <section class="kpis" id="scan-kpis" hidden></section>
+
+        <section class="card" id="link-card" hidden>
+          <div class="card-head">
+            <h2>Connection quality</h2>
+            <div class="legend" id="link-legend"></div>
+          </div>
+          <div class="chart tall"><canvas id="link-chart"></canvas></div>
+        </section>
+
+        <div class="grid-2" id="scan-charts" hidden>
+          <section class="card span-2">
+            <div class="card-head">
+              <h2>Signal strength over time</h2>
+              <p class="hint">Tick networks in the table to compare them. Breaks mean the network was missing from a scan.</p>
+            </div>
+            <div class="chart tall"><canvas id="rssi-chart"></canvas></div>
+          </section>
+          <section class="card">
+            <div class="card-head"><h2>2.4 GHz channels</h2><span class="hint">networks visible now</span></div>
+            <div class="chart"><canvas id="ch24-chart"></canvas></div>
+          </section>
+          <section class="card">
+            <div class="card-head"><h2>5 GHz channels</h2><span class="hint">networks visible now</span></div>
+            <div class="chart"><canvas id="ch5-chart"></canvas></div>
+          </section>
+        </div>
+
+        <section class="card" id="networks-card" hidden>
+          <div class="card-head wrap">
+            <h2>Networks <span class="count" id="network-count"></span></h2>
+            <div class="filters">
+              <input type="search" id="network-filter" placeholder="Filter by name or BSSID" aria-label="Filter networks">
+              <div class="chips" role="group" aria-label="Band">
+                <button type="button" class="chip active" data-band="all">All</button>
+                <button type="button" class="chip" data-band="2.4 GHz">2.4 GHz</button>
+                <button type="button" class="chip" data-band="5 GHz">5 GHz</button>
+              </div>
+              <label class="toggle"><input type="checkbox" id="visible-only"> Visible now</label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="networks">
+              <thead>
+                <tr>
+                  <th class="plot-col" aria-label="Plot"></th>
+                  <th data-sort="ssid">Network</th>
+                  <th data-sort="channel">Band / ch</th>
+                  <th data-sort="security">Security</th>
+                  <th data-sort="current_rssi" class="num">Now</th>
+                  <th data-sort="mean_rssi" class="num">Mean</th>
+                  <th data-sort="min_rssi" class="num">Min / max</th>
+                  <th data-sort="std_rssi" class="num" title="Standard deviation of RSSI">Std dev</th>
+                  <th data-sort="seen_pct" class="num" title="Share of scans the network appeared in">Seen</th>
+                  <th data-sort="dropouts" class="num" title="Times the network vanished and came back">Drops</th>
+                  <th data-sort="stability" class="num">Stability</th>
+                </tr>
+              </thead>
+              <tbody id="network-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head wrap">
+            <h2>Event log</h2>
+            <div class="chips" role="group" aria-label="Event level">
+              <button type="button" class="chip active" data-level="all">All</button>
+              <button type="button" class="chip" data-level="warning">Warnings</button>
+              <button type="button" class="chip" data-level="error">Errors</button>
+            </div>
+          </div>
+          <ol class="log" id="event-log"></ol>
+        </section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
