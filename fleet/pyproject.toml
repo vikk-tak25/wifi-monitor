@@ -9,6 +9,7 @@ dependencies = [
     "sqlalchemy>=2.0.36",
     "psycopg[binary]>=3.2",
     "alembic>=1.14",
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]
@@ -25,7 +26,7 @@ build-backend = "setuptools.build_meta"
 include = ["fleet*"]
 
 [tool.setuptools.package-data]
-fleet = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
+fleet = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py", "static/*", "static/vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

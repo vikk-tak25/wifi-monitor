@@ -25,7 +25,8 @@ from fleet.security import hash_password
 BASE_URL = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg://fleet:fleet-dev@127.0.0.1:5433/fleet")
 TEST_DB = "fleet_test"
 ADMIN_PASSWORD = "correct horse battery"
-TABLES = ("events", "ingest_batches", "link_samples", "scans", "scan_observations", "admin_sessions", "units")
+TABLES = ("events", "ingest_batches", "link_samples", "scans", "scan_observations", "admin_sessions", "units",
+          "settings", "unit_placements", "floor_plans")
 
 
 class Clock:

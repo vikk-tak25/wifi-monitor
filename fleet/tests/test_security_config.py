@@ -121,6 +121,21 @@ def test_production_refuses_insecure_settings(change, message):
         load_settings(env={**PROD, **change}, env_file=None)
 
 
+def test_trusted_proxies():
+    assert load_settings(env={}, env_file=None).trusted_proxies == ()
+    s = load_settings(env={"FLEET_TRUSTED_PROXIES": "127.0.0.1, ::1,10.0.0.0/8"}, env_file=None)
+    assert s.trusted_proxies == ("127.0.0.1", "::1", "10.0.0.0/8")
+    with pytest.raises(ConfigError, match="FLEET_TRUSTED_PROXIES"):
+        load_settings(env={"FLEET_TRUSTED_PROXIES": "caddy"}, env_file=None)
+
+
+def test_timezone_setting():
+    assert load_settings(env={}, env_file=None).timezone == "Europe/Tallinn"
+    assert load_settings(env={"FLEET_TIMEZONE": "UTC"}, env_file=None).timezone == "UTC"
+    with pytest.raises(ConfigError, match="FLEET_TIMEZONE"):
+        load_settings(env={"FLEET_TIMEZONE": "Mars/Olympus"}, env_file=None)
+
+
 def test_agent_update_settings(tmp_path):
     from fleet.config import DEFAULT_AGENT_PATH
 
@@ -137,7 +152,7 @@ def test_env_example_documents_fleet_settings():
     expected = {"DATABASE_URL", "FLEET_SECRET_KEY", "FLEET_ADMIN_PASSWORD_HASH", "FLEET_PUBLIC_URL",
                 "FLEET_SESSION_HOURS", "FLEET_OFFLINE_AFTER_S", "FLEET_SAMPLE_INTERVAL_S",
                 "FLEET_BATCH_INTERVAL_S", "FLEET_SCAN_INTERVAL_S", "FLEET_SERVER_PING_INTERVAL_S",
-                "FLEET_AGENT_UPDATES", "FLEET_AGENT_PATH"}
+                "FLEET_AGENT_UPDATES", "FLEET_AGENT_PATH", "FLEET_TRUSTED_PROXIES", "FLEET_TIMEZONE", "FLEET_UNIT_URL", "FLEET_FIRMWARE_DIR"}
     assert expected <= set(example)
     settings = load_settings(env=example, env_file=None)
     assert settings.environment == "development"

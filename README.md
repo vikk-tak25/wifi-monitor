@@ -170,6 +170,42 @@ JSON
 
 Set `"watchdog_s": 0` while developing: the hardware watchdog cannot be stopped and would reset the board while you work in the REPL. Press Ctrl-C right after a reset to get the REPL without starting the agent.
 
+### Dashboard
+
+`https://<server>/` (or http://localhost:8800 locally) after signing in with the admin password:
+
+- **Rooms**: every unit side by side for the last hour, 24 hours or 7 days: median signal with range and standard deviation, gateway packet loss, latency median and p95, server round trip, uptime, Wi-Fi drops, roams and a 0 to 100 stability score (50% uptime, 30% packet loss, 20% signal steadiness). Offline units are flagged.
+- **Room**: candlestick charts (open, high, low, close per 5 min, 15 min, 1 hour or 1 day) for signal strength, gateway latency and server round trip, each with a median line; latency charts also show packet loss per candle. Plus the access points the unit used, the networks heard in its latest scan, and its events.
+- **Events**: everything units and the server reported, filterable by room, level and kind.
+- **Units**: status, last seen, agent and firmware versions, MAC, IP and current access point.
+
+Candles and medians are exact (computed from raw samples). Daily candles start at midnight in `FLEET_TIMEZONE` (default `Europe/Tallinn`). The 7-day room comparison is recomputed in the background every 4 minutes because it takes about 2 s with 50 units; `fleet/scripts/benchmark_dashboard.py` measures all dashboard queries with 50 units and 7 days of synthetic data.
+
+For a dashboard with something in it during development:
+
+```sh
+.venv/bin/fleet seed-demo --units 6 --days 3     # refused when ENVIRONMENT=production
+```
+
+### Floor plans
+
+**Floors** shows the units on uploaded floor plans (PNG, JPEG, WebP or SVG, up to 5 MB each, stored in the database). Tick **Place units** to drag units onto their rooms, move them, or remove them (×); positions are stored as fractions of the image, so replacing a plan with a sharper scan keeps them. Outside edit mode each unit is coloured by the chosen metric (median signal, packet loss, latency, stability or uptime) for the top bar's time window, with an optional heat layer interpolated between units (inverse-distance weighting, fading out where there are no units). Clicking a unit opens its room.
+
+Uploads are checked by their bytes, not the declared type. SVGs with scripts, event handlers, `javascript:` or external links are refused, and plans are served with `nosniff` and, for SVG, a sandboxing Content-Security-Policy.
+
+### Adding units from the browser
+
+1. **Settings** (once): enter the Wi-Fi network and password units should join. The password is stored encrypted (Fernet, key derived from `FLEET_SECRET_KEY`) and only leaves the server inside a unit's configuration. Choose the label size and fields.
+2. On the server (once): `fleet fetch-firmware` downloads MicroPython for the ESP32-C5, pinned by version and SHA-256. micropython.org sends no CORS headers, so the browser fetches it from our server.
+3. **Units → Add unit** in Chrome or Edge (Web Serial): plug the board in, type the room name, press **Connect board and program**. The page resets the board, installs MicroPython if it is missing or a different version, registers the unit, copies `main.py`, `app.py` and `config.json`, restarts it and waits for its first handshake. About 25 seconds, or about 40 with MicroPython installation.
+4. Print the label (adjustable size and fields, with a QR code to the room page). With **Several boards in a row** the page offers the next room name (`B-204` → `B-205`) for the next board.
+
+**Reprogram** on the Units page does the same for an existing unit (new room, new board, changed Wi-Fi): it issues a new key and the old one stops working.
+
+Two ESP32-C5 details the page handles: esptool-js 0.7.0 cannot do the full watchdog reset this chip needs after flashing, so the page does it itself (as Python esptool's `--after watchdog-reset`); and a unit that ran with its hardware watchdog stops reading USB input until such a reset, so every programming run starts with one.
+
+`fleet/scripts/hardware/` runs the same browser modules from Node against a real board (see its README); `node --test fleet/tests/js/*.test.mjs` tests the serial protocol.
+
 ### Unit API
 
 | Endpoint | Purpose |

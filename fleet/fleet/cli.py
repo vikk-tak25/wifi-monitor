@@ -33,7 +33,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
     if args.migrate:
         migrate(settings.database_url)
-    uvicorn.run(create_app(settings), host=args.host, port=args.port, proxy_headers=False,
+    trusted = settings.trusted_proxies
+    uvicorn.run(create_app(settings), host=args.host, port=args.port, proxy_headers=bool(trusted),
+                forwarded_allow_ips=",".join(trusted) if trusted else None,
                 log_level="info", access_log=not settings.is_production)
     return 0
 
@@ -74,6 +76,36 @@ def cmd_create_unit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fetch_firmware(args: argparse.Namespace) -> int:
+    from .provisioning import FIRMWARE, ProvisioningError, fetch_firmware
+
+    try:
+        path = fetch_firmware(load_settings())
+    except ProvisioningError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    print(f"MicroPython {FIRMWARE.version} for {FIRMWARE.chip}: {path} (SHA-256 verified)")
+    return 0
+
+
+def cmd_seed_demo(args: argparse.Namespace) -> int:
+    from .db import make_engine, utcnow
+    from .demo import DemoRefused, seed_demo
+
+    settings = load_settings()
+    engine = make_engine(settings.database_url)
+    try:
+        with engine.begin() as conn:
+            ids = seed_demo(conn, settings, count=args.units, days=args.days, now=utcnow())
+    except DemoRefused as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
+    print(f"Created {len(ids)} demo rooms with {args.days:g} days of synthetic samples.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="fleet", description="Wi-Fi fleet server")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -91,6 +123,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", required=True, help="room name, e.g. 'B-204'")
     p.add_argument("--notes")
     p.set_defaults(func=cmd_create_unit)
+
+    sub.add_parser("fetch-firmware", help="download the pinned MicroPython firmware for provisioning") \
+        .set_defaults(func=cmd_fetch_firmware)
+
+    p = sub.add_parser("seed-demo", help="development only: add synthetic demo rooms")
+    p.add_argument("--units", type=int, default=6)
+    p.add_argument("--days", type=float, default=2.0)
+    p.set_defaults(func=cmd_seed_demo)
 
     args = parser.parse_args(argv)
     try:

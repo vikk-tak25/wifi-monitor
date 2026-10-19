@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 from dataclasses import dataclass, field
@@ -17,6 +18,11 @@ DEV_ADMIN_PASSWORD = "admin"
 MIN_SECRET_KEY_LENGTH = 32
 # The unit agent served for remote updates. In a source checkout it is unit/app.py.
 DEFAULT_AGENT_PATH = Path(__file__).resolve().parents[2] / "unit" / "app.py"
+# MicroPython firmware for browser provisioning (#4); `fleet fetch-firmware` downloads it. In a source
+# checkout that is <repo>/firmware; an installed package falls back to ./firmware (the service's
+# working directory), so set FLEET_FIRMWARE_DIR explicitly in deployments.
+_SOURCE_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_FIRMWARE_DIR = _SOURCE_ROOT / "firmware" if (_SOURCE_ROOT / "unit").is_dir() else Path("firmware")
 
 
 class ConfigError(ValueError):
@@ -53,6 +59,20 @@ class Settings:
     session_hours: float = 12.0
     offline_after_s: float = 600.0
     agent_path: Path | None = None
+    # Proxies (IPs or networks) allowed to set X-Forwarded-For/-Proto, e.g. Caddy on loopback.
+    trusted_proxies: tuple[str, ...] = ()
+    # Time zone for daily candles and the dashboard's day boundaries.
+    timezone: str = "Europe/Tallinn"
+    # Address units use: plain HTTP with signed requests (#9). Empty means FLEET_PUBLIC_URL with http://.
+    unit_url: str = ""
+    firmware_dir: Path = DEFAULT_FIRMWARE_DIR
+
+    @property
+    def effective_unit_url(self) -> str:
+        if self.unit_url:
+            return self.unit_url
+        parts = urlsplit(self.public_url)
+        return f"http://{parts.netloc}{parts.path}".rstrip("/")
     unit_defaults: UnitDefaults = field(default_factory=UnitDefaults)
 
     @property
@@ -140,6 +160,25 @@ def load_settings(env: dict[str, str] | None = None, env_file: Path | str | None
         raise ConfigError("FLEET_AGENT_UPDATES must be true or false")
     agent_path = Path(get("FLEET_AGENT_PATH", str(DEFAULT_AGENT_PATH))) if updates == "true" else None
 
+    trusted = tuple(p.strip() for p in get("FLEET_TRUSTED_PROXIES").split(",") if p.strip())
+    for proxy in trusted:
+        try:
+            ipaddress.ip_network(proxy, strict=False)
+        except ValueError as exc:
+            raise ConfigError(f"FLEET_TRUSTED_PROXIES: {proxy!r} is not an IP address or network") from exc
+
+    timezone = get("FLEET_TIMEZONE", "Europe/Tallinn")
+    try:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(timezone)
+    except Exception as exc:
+        raise ConfigError(f"FLEET_TIMEZONE: unknown time zone {timezone!r}") from exc
+
+    unit_url = get("FLEET_UNIT_URL").rstrip("/")
+    if unit_url and urlsplit(unit_url).scheme not in ("http", "https"):
+        raise ConfigError("FLEET_UNIT_URL must start with http:// or https://")
+
     defaults = UnitDefaults(
         sample_interval_s=_float(merged, "FLEET_SAMPLE_INTERVAL_S", 5.0, 1, 300),
         batch_interval_s=_float(merged, "FLEET_BATCH_INTERVAL_S", 60.0, 5, 3600),
@@ -156,5 +195,9 @@ def load_settings(env: dict[str, str] | None = None, env_file: Path | str | None
         session_hours=_float(merged, "FLEET_SESSION_HOURS", 12.0, 0.1, 24 * 30),
         offline_after_s=_float(merged, "FLEET_OFFLINE_AFTER_S", 600.0, 30, 86400),
         agent_path=agent_path,
+        trusted_proxies=trusted,
+        timezone=timezone,
+        unit_url=unit_url,
+        firmware_dir=Path(get("FLEET_FIRMWARE_DIR", str(DEFAULT_FIRMWARE_DIR))),
         unit_defaults=defaults,
     )

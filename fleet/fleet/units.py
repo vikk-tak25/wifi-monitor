@@ -106,6 +106,22 @@ def revoke_unit(conn: Connection, unit_id: str, now: datetime) -> Row | None:
     return get_unit(conn, unit_id)
 
 
+def delete_unit(conn: Connection, unit_id: str, now: datetime) -> str | None:
+    """Remove a unit and everything it measured (#14). Returns its name, or None if there was no such unit."""
+    from .tables import link_samples, scan_observations, scans
+
+    unit = get_unit(conn, unit_id)
+    if unit is None:
+        return None
+    for table in (link_samples, scans, scan_observations):  # hypertables: no foreign keys to cascade
+        conn.execute(table.delete().where(table.c.unit_id == unit_id))
+    conn.execute(units.delete().where(units.c.id == unit_id))  # events, batches and placement cascade
+    add_event(conn, time=now, unit_id=None, kind="unit_removed", level="warning",
+              message=f"Unit removed: {unit.name}" + (f" (board {unit.mac})" if unit.mac else ""),
+              detail={"unit_id": unit_id})
+    return unit.name
+
+
 def authenticate(conn: Connection, settings: Settings, authorization: str | None) -> Row | None:
     """Return the unit for a `Bearer <unit key>` header, or None if missing, wrong or revoked."""
     if not authorization or not authorization.startswith("Bearer "):

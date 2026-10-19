@@ -168,6 +168,79 @@ class Batch(Strict):
 
 # -- admin API --------------------------------------------------------------
 
+class WifiUpdate(Strict):
+    """Network units join. `password` omitted keeps the stored one; empty means an open network."""
+
+    ssid: Annotated[str, Field(min_length=1)]
+    password: Annotated[str, Field(max_length=63)] | None = None
+
+    @field_validator("ssid")
+    @classmethod
+    def _check_ssid(cls, value: str) -> str:
+        return _ssid(value)
+
+    @field_validator("password")
+    @classmethod
+    def _check_password(cls, value: str | None) -> str | None:
+        if value and len(value) < 8:
+            raise ValueError("WPA passwords have 8 to 63 characters")
+        return value
+
+
+class LabelFields(Strict):
+    room: bool = True
+    unit_id: bool = True
+    qr: bool = True
+    network: bool = False
+    date: bool = True
+    mac: bool = False
+
+
+class LabelTemplate(Strict):
+    width_mm: Annotated[float, Field(ge=15, le=150)] = 62
+    height_mm: Annotated[float, Field(ge=10, le=150)] = 29
+    font_scale: Annotated[float, Field(ge=0.5, le=2.0)] = 1.0
+    fields: LabelFields = LabelFields()
+
+
+class FloorUpdate(Strict):
+    name: Annotated[str, Field(min_length=1, max_length=80)] | None = None
+    sort_order: Annotated[int, Field(ge=0, le=10000)] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, value: str | None) -> str | None:
+        return None if value is None else _name(value)
+
+
+class Placement(Strict):
+    floor_id: Annotated[int, Field(ge=1)]
+    x: Annotated[float, Field(ge=0, le=1)]
+    y: Annotated[float, Field(ge=0, le=1)]
+
+
+class ProvisionRequest(Strict):
+    """Register a new unit, or with `unit_id` re-key an existing one (new room, new board, new Wi-Fi)."""
+
+    name: Annotated[str, Field(min_length=1, max_length=100)]
+    notes: Annotated[str, Field(max_length=2000)] | None = None
+    mac: str | None = None
+    unit_id: Annotated[str, Field(pattern=r"^u[a-z2-7]{10}$")] | None = None
+    # When the board's MAC already belongs to other active units: revoke them (#14). Without it the
+    # request is refused, so a board never silently ends up registered twice.
+    retire_existing: bool = False
+
+    @field_validator("mac")
+    @classmethod
+    def _check_mac(cls, value: str | None) -> str | None:
+        return _bssid(value)
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, value: str) -> str:
+        return _name(value)
+
+
 class Login(Strict):
     password: Annotated[str, Field(min_length=1, max_length=256)]
 

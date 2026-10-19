@@ -169,6 +169,37 @@ def test_settings_endpoint(admin):
     assert data["unit_defaults"]["batch_interval_s"] == 60.0 and data["offline_after_s"] == 600.0
 
 
+def test_hsts_only_over_https(settings, engine, clock):
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+
+    from fleet.app import create_app
+
+    with TestClient(create_app(replace(settings, public_url="https://wifi.example"), engine=engine, clock=clock,
+                               background=False)) as c:
+        assert c.get("/healthz").headers["Strict-Transport-Security"] == "max-age=31536000"
+
+
+def test_forwarded_headers_from_trusted_proxy_are_used(settings, engine, clock, make_unit):
+    """With uvicorn's proxy middleware (as `fleet serve` enables it), the unit IP comes from Caddy."""
+    from fastapi.testclient import TestClient
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    from fleet.app import create_app
+
+    from .conftest import hello_payload, unit_headers
+
+    _, key = make_unit()
+    app = ProxyHeadersMiddleware(create_app(settings, engine=engine, clock=clock, background=False),
+                                 trusted_hosts="testclient")
+    with TestClient(app) as c:
+        c.post("/api/unit/v1/hello", json=hello_payload(),
+               headers={**unit_headers(key), "X-Forwarded-For": "203.0.113.10", "X-Forwarded-Proto": "https"})
+    with engine.connect() as conn:
+        assert conn.execute(select(units.c.last_ip)).scalar_one() == "203.0.113.10"
+
+
 def test_health_and_headers(client):
     res = client.get("/healthz")
     assert res.status_code == 200 and res.json() == {"status": "ok"}

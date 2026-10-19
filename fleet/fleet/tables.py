@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, Integer, MetaData, SmallInteger, String,
-                        Table, Text)
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, LargeBinary, MetaData,
+                        SmallInteger, String, Table, Text)
 from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
@@ -63,6 +63,34 @@ events = Table(
     Column("kind", String(32), nullable=False),
     Column("message", Text, nullable=False),
     Column("detail", JSONType),
+)
+
+settings = Table(
+    "settings", metadata,
+    Column("key", String(64), primary_key=True),
+    Column("value", JSONType, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+floor_plans = Table(
+    "floor_plans", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(80), nullable=False),
+    Column("image", LargeBinary, nullable=False),
+    Column("content_type", String(32), nullable=False),
+    Column("size", Integer, nullable=False),
+    Column("sort_order", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+unit_placements = Table(
+    "unit_placements", metadata,
+    Column("unit_id", String(16), ForeignKey("units.id", ondelete="CASCADE"), primary_key=True),
+    Column("floor_id", Integer, ForeignKey("floor_plans.id", ondelete="CASCADE"), nullable=False),
+    Column("x", Float, nullable=False),
+    Column("y", Float, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
 # Hypertables (TimescaleDB): no primary keys, partitioned by time.

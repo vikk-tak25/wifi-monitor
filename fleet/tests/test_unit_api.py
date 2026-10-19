@@ -85,7 +85,7 @@ def test_hello_from_different_board_is_flagged(client, admin, unit):
 
 
 @pytest.mark.parametrize("change", [
-    {"agent_version": ""}, {"agent_version": "1 0"}, {"rssi": 5}, {"channel": 0}, {"mac": "d0cf13e51254"},
+    {"agent_version": ""}, {"agent_version": "1 0"}, {"rssi": 5}, {"channel": 0}, {"mac": "0200c5001254"},
     {"ssid": "x" * 33}, {"ssid": "ä" * 17}, {"uptime_s": -1}, {"surprise": True},
 ])
 def test_hello_validation(client, unit, change):
